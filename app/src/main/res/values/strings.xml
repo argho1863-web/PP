@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Phone Agent</string>
+    <string name="accessibility_description">Lets Phone Agent read what is on screen and tap, type, scroll and navigate for you when you give it a task. Everything it sees is sent to the AI provider you configure.</string>
+</resources>

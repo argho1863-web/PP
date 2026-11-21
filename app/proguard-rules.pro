@@ -1,0 +1,12 @@
+-keepattributes *Annotation*, InnerClasses, Signature
+-dontnote kotlinx.serialization.**
+-keepclassmembers class kotlinx.serialization.json.** { *** Companion; }
+-keepclasseswithmembers class kotlinx.serialization.json.** { kotlinx.serialization.KSerializer serializer(...); }
+-keep,includedescriptorclasses class com.example.phoneagent.**$$serializer { *; }
+-keepclassmembers class com.example.phoneagent.** { *** Companion; }
+-keepclasseswithmembers class com.example.phoneagent.** { kotlinx.serialization.KSerializer serializer(...); }
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-dontwarn org.conscrypt.**
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn javax.annotation.**

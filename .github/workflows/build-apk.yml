@@ -1,0 +1,87 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Locate Gradle project root
+        id: root
+        run: |
+          set -e
+          SETTINGS=$(find . -maxdepth 3 -name 'settings.gradle.kts' -not -path './.git/*' | head -n 1)
+          if [ -z "$SETTINGS" ]; then
+            echo "::error::settings.gradle.kts not found. Upload the PhoneAgent files so settings.gradle.kts is at (or at most 2 folders below) the repo root."
+            ls -R . | head -60
+            exit 1
+          fi
+          DIR=$(dirname "$SETTINGS")
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+          echo "Project root: $DIR"
+          ls -la "$DIR"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 8.9 (used only to create the wrapper if it is missing)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Ensure Gradle wrapper exists
+        working-directory: ${{ steps.root.outputs.dir }}
+        run: |
+          if [ ! -f gradlew ] || [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "Gradle wrapper missing - generating it with Gradle 8.9"
+            gradle wrapper --gradle-version 8.9 --no-daemon
+          fi
+          chmod +x gradlew
+          ./gradlew --version
+
+      - name: Build debug APK
+        working-directory: ${{ steps.root.outputs.dir }}
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK was produced
+        working-directory: ${{ steps.root.outputs.dir }}
+        run: |
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          ls -l app/build/outputs/apk/debug/
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhoneAgent-debug-apk
+          path: ${{ steps.root.outputs.dir }}/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload build reports (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-reports
+          path: ${{ steps.root.outputs.dir }}/app/build/reports
+          if-no-files-found: ignore

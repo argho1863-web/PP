@@ -2,10 +2,12 @@ package com.example.phoneagent.service
 
 import android.accessibilityservice.AccessibilityService
 import android.graphics.Bitmap
+import android.os.SystemClock
 import android.util.Base64
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +30,9 @@ class PhoneAgentAccessibilityService : AccessibilityService() {
     private val shotExecutor = Executors.newSingleThreadExecutor()
     private var lastNodes: List<AccessibilityNodeInfo> = emptyList()
 
+    /** Uptime (ms) of the last window/content/scroll event coming from another app. */
+    @Volatile private var lastEventTime = 0L
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
@@ -35,7 +40,18 @@ class PhoneAgentAccessibilityService : AccessibilityService() {
         _connected.value = true
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) { /* we poll via snapshot() instead */ }
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        val e = event ?: return
+        when (e.eventType) {
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_SCROLLED -> {
+                // Ignore our own overlay/app so the floating bubble's updates never delay the agent.
+                if (e.packageName?.toString() != packageName) lastEventTime = SystemClock.uptimeMillis()
+            }
+        }
+    }
+
     override fun onInterrupt() {}
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
@@ -49,6 +65,29 @@ class PhoneAgentAccessibilityService : AccessibilityService() {
         _connected.value = false
         shotExecutor.shutdown()
         super.onDestroy()
+    }
+
+    /**
+     * Suspends until the UI looks ready for the next observation, instead of sleeping a fixed time.
+     *
+     * @param since       uptime (ms) when the last action was fired (0 before the first step)
+     * @param minWaitMs   if no UI event arrives within this time after [since], assume the screen did not change
+     * @param quietMs     how long the UI must stay free of events once changes started (150-250 ms is typical)
+     * @param timeoutMs   hard upper bound so busy/animated screens never stall the agent
+     */
+    suspend fun awaitUiReady(since: Long, minWaitMs: Long, quietMs: Long = 200, timeoutMs: Long = 1500) {
+        val start = SystemClock.uptimeMillis()
+        while (true) {
+            val now = SystemClock.uptimeMillis()
+            if (now - start >= timeoutMs) return
+            val last = lastEventTime
+            if (last > since) {
+                if (now - last >= quietMs) return          // changes happened and have settled
+            } else if (now - since >= minWaitMs) {
+                return                                    // nothing changed; do not wait longer
+            }
+            delay(40)
+        }
     }
 
     /** Indexed JSON of the active window. Nodes from the previous snapshot are released. */

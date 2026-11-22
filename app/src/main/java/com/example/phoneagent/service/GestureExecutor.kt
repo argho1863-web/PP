@@ -28,10 +28,10 @@ class GestureExecutor(private val service: AccessibilityService) {
         val cx = w / 2
         val cy = h / 2
         return when (direction.lowercase()) {
-            "down" -> swipe(cx, h * 0.72f, cx, h * 0.28f, 350)
-            "up" -> swipe(cx, h * 0.28f, cx, h * 0.72f, 350)
-            "right" -> swipe(w * 0.8f, cy, w * 0.2f, cy, 350)
-            "left" -> swipe(w * 0.2f, cy, w * 0.8f, cy, 350)
+            "down" -> swipe(cx, h * 0.72f, cx, h * 0.28f, 250)
+            "up" -> swipe(cx, h * 0.28f, cx, h * 0.72f, 250)
+            "right" -> swipe(w * 0.8f, cy, w * 0.2f, cy, 250)
+            "left" -> swipe(w * 0.2f, cy, w * 0.8f, cy, 250)
             else -> false
         }
     }

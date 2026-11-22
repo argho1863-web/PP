@@ -18,7 +18,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.phoneagent.data.ProviderPresets
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -99,16 +98,11 @@ fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = viewModel()) {
             HorizontalDivider()
             Text("Agent Controls", style = MaterialTheme.typography.titleLarge)
 
-            Text("Max steps per task: ${s.maxSteps}")
-            Slider(
-                value = s.maxSteps.toFloat(), onValueChange = { v -> vm.update { it.copy(maxSteps = v.roundToInt()) } },
-                valueRange = 3f..50f, steps = 46,
-            )
-            Text("Step delay: ${"%.1f".format(s.stepDelaySec)} s")
-            Slider(
-                value = s.stepDelaySec,
-                onValueChange = { v -> vm.update { it.copy(stepDelaySec = (v * 10).roundToInt() / 10f) } },
-                valueRange = 1f..3f,
+            Text(
+                "Steps are unlimited and each step starts as soon as the screen settles. " +
+                    "Press STOP (here or on the floating bubble) to end a task.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             ToggleRow("Vision (send screenshots)", "Needs a vision-capable model. Screenshots are sent to your provider.", s.vision) { v -> vm.update { it.copy(vision = v) } }
             ToggleRow("Voice (TTS) feedback", "Speak confirmations and the final summary.", s.tts) { v -> vm.update { it.copy(tts = v) } }

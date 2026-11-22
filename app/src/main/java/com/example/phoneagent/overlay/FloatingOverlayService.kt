@@ -1,11 +1,13 @@
 package com.example.phoneagent.overlay
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -27,6 +29,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import com.example.phoneagent.MainActivity
 import com.example.phoneagent.phoneApp
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,8 +59,8 @@ private class OverlayRoot(
 }
 
 /**
- * Draggable card over other apps: live step text, mic, STOP, a typing field with Send, and Approve/Deny
- * for guarded actions.
+ * Draggable card over other apps: live step text, mic (speech to text), voice on/mute (text to speech), STOP,
+ * a typing field with Send, and Approve/Deny for guarded actions.
  *
  * Keyboard handling: the window is FLAG_NOT_FOCUSABLE by default so touches and focus stay with the app
  * underneath (the agent can keep reading/clicking it). Tapping the text field clears that flag so the IME
@@ -166,12 +169,23 @@ class FloatingOverlayService : Service() {
 
         val status = TextView(this).apply {
             setTextColor(Color.WHITE); textSize = 13f; text = "Idle"
-            maxLines = 3; ellipsize = TextUtils.TruncateAt.END; maxWidth = dp(190)
+            maxLines = 3; ellipsize = TextUtils.TruncateAt.END; maxWidth = dp(150)
             setPadding(dp(10), dp(4), dp(10), dp(4))
         }
         val mic = chip("\uD83C\uDFA4", 0xFF3B6FD4.toInt()) {
-            if (app.voice.listening.value) app.voice.stopListening()
-            else app.voice.startListening { app.orchestrator.submitUserInput(it) }
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                // Permission prompts need an Activity: open the app, which asks for the microphone on launch.
+                startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } else if (app.voice.listening.value) {
+                app.voice.stopListening()
+            } else {
+                // Spoken command -> AgentOrchestrator.submitUserInput -> startTask (or answers a pending question).
+                app.voice.startListening { app.orchestrator.submitUserInput(it) }
+            }
+        }
+        val voiceBtn = chip("\uD83D\uDD0A", 0xFF455A64.toInt()) {
+            app.settingsStore.update { it.copy(tts = !it.tts) }
+            if (!app.settingsStore.settings.value.tts) app.voice.stopSpeaking()
         }
         val stopBtn = chip("STOP", 0xFFD32F2F.toInt()) { app.orchestrator.stop() }
 
@@ -179,6 +193,7 @@ class FloatingOverlayService : Service() {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             addView(status)
             addView(mic, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(6) })
+            addView(voiceBtn, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(6) })
             addView(stopBtn)
         }
 
@@ -256,10 +271,11 @@ class FloatingOverlayService : Service() {
 
         val o = app.orchestrator
         scope.launch {
-            combine(o.status, o.pendingApproval, o.pendingQuestion) { st, ap, q ->
+            combine(o.status, o.pendingApproval, o.pendingQuestion, app.voice.listening, app.voice.partial) { st, ap, q, li, part ->
                 when {
                     ap != null -> "Approve? ${ap.description}"
-                    q != null -> "Agent asks: ${q.question}  (type or tap \uD83C\uDFA4 to answer)"
+                    li -> if (part.isBlank()) "Listening..." else "Listening: $part"
+                    q != null -> "Agent asks: ${q.question}  (type or speak to answer)"
                     else -> st
                 }
             }.collect { status.text = it }
@@ -267,6 +283,7 @@ class FloatingOverlayService : Service() {
         scope.launch { o.pendingApproval.collect { approvalRow.visibility = if (it != null) View.VISIBLE else View.GONE } }
         scope.launch { o.running.collect { stopBtn.alpha = if (it) 1f else 0.45f } }
         scope.launch { app.voice.listening.collect { mic.text = if (it) "\u23FA" else "\uD83C\uDFA4" } }
+        scope.launch { app.settingsStore.settings.collect { voiceBtn.text = if (it.tts) "\uD83D\uDD0A" else "\uD83D\uDD07" } }
     }
 
     override fun onDestroy() {

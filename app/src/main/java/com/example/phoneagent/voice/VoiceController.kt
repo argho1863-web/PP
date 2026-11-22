@@ -33,6 +33,7 @@ class VoiceController(
     private var onResult: ((String) -> Unit)? = null
     @Volatile private var speaking = false
     @Volatile private var ttsReady = false
+    @Volatile private var listenAfterSpeech: ((String) -> Unit)? = null
     private var tts: TextToSpeech? = null
 
     init {
@@ -42,9 +43,9 @@ class VoiceController(
                 tts?.language = Locale.getDefault()
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) { speaking = true }
-                    override fun onDone(utteranceId: String?) { speaking = false; scheduleRestart() }
+                    override fun onDone(utteranceId: String?) { speaking = false; onSpeechFinished() }
                     @Deprecated("Deprecated in Java")
-                    override fun onError(utteranceId: String?) { speaking = false; scheduleRestart() }
+                    override fun onError(utteranceId: String?) { speaking = false; onSpeechFinished() }
                 })
             }
         }
@@ -98,6 +99,17 @@ class VoiceController(
         }, 700)
     }
 
+    /** After a spoken question, open the mic so the user can answer by voice (two-way conversation). */
+    private fun onSpeechFinished() {
+        val cb = listenAfterSpeech
+        if (cb != null) {
+            listenAfterSpeech = null
+            startListening(cb)
+        } else {
+            scheduleRestart()
+        }
+    }
+
     private val listener = object : RecognitionListener {
         override fun onResults(results: Bundle?) {
             listening.value = false
@@ -131,16 +143,36 @@ class VoiceController(
 
     // ---------------- TTS ----------------
 
-    fun speak(text: String) {
+    /** Speaks [text] if voice is on. [flush] = true interrupts current speech; false queues behind it. */
+    fun speak(text: String, flush: Boolean = true) {
         if (!settingsStore.settings.value.tts || !ttsReady || text.isBlank()) return
         main.post {
             runCatching { recognizer?.stopListening() }
             listening.value = false
-            tts?.speak(text.take(500), TextToSpeech.QUEUE_FLUSH, null, "agent")
+            tts?.speak(
+                text.take(500),
+                if (flush) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD,
+                null,
+                "agent",
+            )
         }
     }
 
+    /**
+     * Speaks a question and then listens for the spoken answer. With voice muted (or TTS unavailable)
+     * the mic opens immediately instead.
+     */
+    fun askAndListen(text: String, callback: (String) -> Unit) {
+        if (!settingsStore.settings.value.tts || !ttsReady) {
+            startListening(callback)
+            return
+        }
+        listenAfterSpeech = callback
+        speak(text)
+    }
+
     fun stopSpeaking() {
+        listenAfterSpeech = null
         main.post { tts?.stop(); speaking = false }
     }
 

@@ -12,6 +12,8 @@ data class AgentAction(
     val action: String = "",
     val params: JsonObject = JsonObject(emptyMap()),
     @SerialName("requires_confirmation") val requiresConfirmation: Boolean = false,
+    /** Optional short sentence the assistant speaks aloud as a progress update. */
+    val say: String = "",
 )
 
 private val lenient = Json { ignoreUnknownKeys = true; isLenient = true; coerceInputValues = true }
@@ -24,12 +26,15 @@ fun extractJsonObject(raw: String): String? {
     return if (start in 0 until end) cleaned.substring(start, end + 1) else null
 }
 
-/** Parses (and repairs) the model's reply. Returns null if it cannot be turned into an action. */
+/**
+ * Parses (and repairs) the model's reply. Returns null if it cannot be turned into an action.
+ * Action names are normalised to lower case, so OPEN_PLAY_STORE and open_play_store both work.
+ */
 fun parseAgentAction(raw: String): AgentAction? {
     val json = extractJsonObject(raw) ?: return null
-    return runCatching { lenient.decodeFromString<AgentAction>(json) }
-        .getOrNull()
-        ?.takeIf { it.action.isNotBlank() }
+    val parsed = runCatching { lenient.decodeFromString<AgentAction>(json) }.getOrNull() ?: return null
+    if (parsed.action.isBlank()) return null
+    return parsed.copy(action = parsed.action.trim().lowercase())
 }
 
 fun JsonObject.str(key: String): String? =

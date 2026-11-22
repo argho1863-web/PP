@@ -4,8 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.phoneagent.data.AgentSettings
+import com.example.phoneagent.data.Persona
 import com.example.phoneagent.data.ProviderPreset
-import com.example.phoneagent.data.ProviderPresets
 import com.example.phoneagent.phoneApp
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -64,11 +64,15 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         )
     }
 
+    fun selectPersona(p: Persona) = update { it.copy(persona = p.name, voicePitch = p.pitch, voiceRate = p.rate) }
+
+    fun previewVoice() = app.voice.speakPreview(_draft.value)
+
     fun save() { app.settingsStore.save(_draft.value); _saved.value = true }
 
     fun testConnection() {
         val s = _draft.value
-        if (s.apiKey.isBlank() && s.presetName != ProviderPresets.CUSTOM) {
+        if (s.apiKey.isBlank() && !s.keyOptional) {
             _test.value = TestState.Failure("Enter an API key first."); return
         }
         _test.value = TestState.Running

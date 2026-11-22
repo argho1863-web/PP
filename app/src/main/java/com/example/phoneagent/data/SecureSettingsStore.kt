@@ -10,6 +10,16 @@ import kotlinx.coroutines.flow.asStateFlow
 
 enum class ProviderType { OPENAI, GEMINI, ANTHROPIC }
 
+/** Voice personas (inspired by the male/female voice switch in GauravSingh9356/J.A.R.V.I.S). */
+enum class Persona(val label: String, val callName: String, val pitch: Float, val rate: Float, val female: Boolean) {
+    JARVIS("J.A.R.V.I.S", "Sir", 0.80f, 0.92f, false),
+    FRIDAY("F.R.I.D.A.Y", "Boss", 1.20f, 1.05f, true);
+
+    companion object {
+        fun from(name: String): Persona = entries.firstOrNull { it.name == name } ?: JARVIS
+    }
+}
+
 data class ProviderPreset(
     val name: String,
     val type: ProviderType,
@@ -19,6 +29,7 @@ data class ProviderPreset(
 
 object ProviderPresets {
     const val CUSTOM = "Custom OpenAI-Compatible"
+    const val LOCAL = "Local Gateway (127.0.0.1:3001)"
 
     val all = listOf(
         ProviderPreset("OpenRouter", ProviderType.OPENAI, "https://openrouter.ai/api/v1",
@@ -33,6 +44,9 @@ object ProviderPresets {
             listOf("llama-3.3-70b-versatile")),
         ProviderPreset("DeepSeek", ProviderType.OPENAI, "https://api.deepseek.com/v1",
             listOf("deepseek-chat")),
+        // For a pooled gateway such as FreeLLMAPI running on the phone itself (e.g. in Termux). Cleartext http is allowed.
+        ProviderPreset(LOCAL, ProviderType.OPENAI, "http://127.0.0.1:3001/v1",
+            listOf("auto")),
         ProviderPreset(CUSTOM, ProviderType.OPENAI, "http://10.0.2.2:11434/v1",
             listOf("llama3.1")),
     )
@@ -47,12 +61,17 @@ data class AgentSettings(
     val baseUrl: String = "https://openrouter.ai/api/v1",
     val apiKey: String = "",
     val model: String = "openai/gpt-4o",
-    val maxSteps: Int = 15,
-    val stepDelaySec: Float = 1.5f,
     val vision: Boolean = false,
     val tts: Boolean = true,
+    val persona: String = Persona.JARVIS.name,
+    val voicePitch: Float = Persona.JARVIS.pitch,
+    val voiceRate: Float = Persona.JARVIS.rate,
 ) {
     val providerType: ProviderType get() = ProviderPresets.byName(presetName).type
+    val personaEnum: Persona get() = Persona.from(persona)
+
+    /** Local / custom endpoints often need no API key. */
+    val keyOptional: Boolean get() = presetName == ProviderPresets.CUSTOM || presetName == ProviderPresets.LOCAL
 }
 
 /** All settings (and especially the API key) live in EncryptedSharedPreferences backed by the Android Keystore. */
@@ -88,10 +107,11 @@ class SecureSettingsStore(context: Context) {
             baseUrl = prefs.getString("baseUrl", d.baseUrl) ?: d.baseUrl,
             apiKey = prefs.getString("apiKey", "") ?: "",
             model = prefs.getString("model", d.model) ?: d.model,
-            maxSteps = prefs.getInt("maxSteps", d.maxSteps),
-            stepDelaySec = prefs.getFloat("stepDelay", d.stepDelaySec),
             vision = prefs.getBoolean("vision", d.vision),
             tts = prefs.getBoolean("tts", d.tts),
+            persona = prefs.getString("persona", d.persona) ?: d.persona,
+            voicePitch = prefs.getFloat("voicePitch", d.voicePitch),
+            voiceRate = prefs.getFloat("voiceRate", d.voiceRate),
         )
     }
 
@@ -101,10 +121,11 @@ class SecureSettingsStore(context: Context) {
             .putString("baseUrl", s.baseUrl.trim())
             .putString("apiKey", s.apiKey.trim())
             .putString("model", s.model.trim())
-            .putInt("maxSteps", s.maxSteps)
-            .putFloat("stepDelay", s.stepDelaySec)
             .putBoolean("vision", s.vision)
             .putBoolean("tts", s.tts)
+            .putString("persona", s.persona)
+            .putFloat("voicePitch", s.voicePitch)
+            .putFloat("voiceRate", s.voiceRate)
             .apply()
         _settings.value = s.copy(baseUrl = s.baseUrl.trim(), apiKey = s.apiKey.trim(), model = s.model.trim())
     }

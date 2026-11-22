@@ -17,6 +17,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.phoneagent.data.Persona
 import com.example.phoneagent.data.ProviderPresets
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -106,6 +107,36 @@ fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = viewModel()) {
             )
             ToggleRow("Vision (send screenshots)", "Needs a vision-capable model. Screenshots are sent to your provider.", s.vision) { v -> vm.update { it.copy(vision = v) } }
             ToggleRow("Voice (TTS) feedback", "Speak confirmations and the final summary.", s.tts) { v -> vm.update { it.copy(tts = v) } }
+
+            HorizontalDivider()
+            Text("Voice & Persona", style = MaterialTheme.typography.titleLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Persona.entries.forEach { p ->
+                    FilterChip(
+                        selected = s.persona == p.name,
+                        onClick = { vm.selectPersona(p) },
+                        label = { Text(p.label) },
+                    )
+                }
+            }
+            Text(
+                "Picking a persona loads its voice preset (J.A.R.V.I.S: deep and calm, F.R.I.D.A.Y: brighter and quicker). Fine-tune below.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text("Voice pitch: ${"%.2f".format(s.voicePitch)}")
+            Slider(
+                value = s.voicePitch,
+                onValueChange = { v -> vm.update { it.copy(voicePitch = v) } },
+                valueRange = 0.5f..2.0f,
+            )
+            Text("Speech rate: ${"%.2f".format(s.voiceRate)}")
+            Slider(
+                value = s.voiceRate,
+                onValueChange = { v -> vm.update { it.copy(voiceRate = v) } },
+                valueRange = 0.5f..2.0f,
+            )
+            OutlinedButton(onClick = { vm.previewVoice() }) { Text("Preview voice") }
 
             Button(onClick = { vm.save() }, modifier = Modifier.fillMaxWidth()) { Text(if (saved) "Saved" else "Save") }
         }

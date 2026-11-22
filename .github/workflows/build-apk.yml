@@ -9,9 +9,11 @@ on:
 permissions:
   contents: read
 
+# Runs for the same ref queue instead of cancelling each other, so a quick second push
+# can no longer kill a build that is already in progress.
 concurrency:
   group: build-apk-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:

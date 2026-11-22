@@ -58,6 +58,7 @@ class GestureExecutor(private val service: AccessibilityService) {
             "HOME" -> AccessibilityService.GLOBAL_ACTION_HOME
             "RECENTS" -> AccessibilityService.GLOBAL_ACTION_RECENTS
             "NOTIFICATIONS" -> AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS
+            "SCREENSHOT" -> AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT
             else -> return false
         }
         return service.performGlobalAction(code)

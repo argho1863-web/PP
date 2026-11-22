@@ -81,6 +81,7 @@ object UiTreeSerializer {
                 if (shownDesc != null) put("contentDescription", shownDesc)
                 n.viewIdResourceName?.let { put("viewId", it.substringAfter(":id/")) }
                 put("className", n.className?.toString()?.substringAfterLast('.').orEmpty())
+                put("bounds", buildJsonArray { add(r.left); add(r.top); add(r.right); add(r.bottom) })
                 put("center", buildJsonArray { add(r.centerX()); add(r.centerY()) })
                 if (n.isClickable) put("isClickable", true)
                 if (n.isEditable) put("isEditable", true)

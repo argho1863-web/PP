@@ -100,28 +100,55 @@ class PhoneAgentAccessibilityService : AccessibilityService() {
         return snap
     }
 
-    /** Compressed JPEG (max 768px wide, quality 60) as base64, or null if unavailable. */
-    suspend fun screenshotBase64(): String? = suspendCancellableCoroutine { cont ->
+    /** Screenshot scaled to at most [maxWidth] px wide, or null if unavailable (needs Android 11+). */
+    suspend fun screenshotBitmap(maxWidth: Int = 768): Bitmap? = suspendCancellableCoroutine { cont ->
         takeScreenshot(Display.DEFAULT_DISPLAY, shotExecutor, object : TakeScreenshotCallback {
             override fun onSuccess(result: ScreenshotResult) {
-                val out = runCatching {
+                val bmp = runCatching {
                     val hw = result.hardwareBuffer
                     val hwBmp = Bitmap.wrapHardwareBuffer(hw, result.colorSpace)
                     val soft = hwBmp?.copy(Bitmap.Config.ARGB_8888, false)
                     hw.close()
                     if (soft == null) null else {
-                        val w = minOf(768, soft.width)
+                        val w = minOf(maxWidth, soft.width)
                         val h = soft.height * w / soft.width
-                        val scaled = Bitmap.createScaledBitmap(soft, w, h, true)
-                        val bos = ByteArrayOutputStream()
-                        scaled.compress(Bitmap.CompressFormat.JPEG, 60, bos)
-                        Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
+                        if (w == soft.width) soft else Bitmap.createScaledBitmap(soft, w, h, true)
                     }
                 }.getOrNull()
-                if (cont.isActive) cont.resume(out)
+                if (cont.isActive) cont.resume(bmp)
             }
 
             override fun onFailure(errorCode: Int) { if (cont.isActive) cont.resume(null) }
         })
+    }
+
+    /** Compressed JPEG (max 768px wide, quality 60) as base64, or null if unavailable. */
+    suspend fun screenshotBase64(): String? {
+        val bmp = screenshotBitmap(768) ?: return null
+        val bos = ByteArrayOutputStream()
+        bmp.compress(Bitmap.CompressFormat.JPEG, 60, bos)
+        return Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
+    }
+
+    /** All visible text and content descriptions of the active window (full text, not trimmed). */
+    fun visibleText(maxChars: Int = 4000): String {
+        val root = rootInActiveWindow ?: return ""
+        val seen = LinkedHashSet<String>()
+        var total = 0
+
+        fun walk(n: AccessibilityNodeInfo, depth: Int) {
+            if (total >= maxChars || depth > 40 || !n.isVisibleToUser) return
+            val t = n.text?.toString()?.trim().orEmpty()
+            if (t.isNotEmpty() && seen.add(t)) total += t.length
+            val d = n.contentDescription?.toString()?.trim().orEmpty()
+            if (d.isNotEmpty() && seen.add(d)) total += d.length
+            for (i in 0 until n.childCount) {
+                val c = n.getChild(i) ?: continue
+                walk(c, depth + 1)
+            }
+        }
+
+        walk(root, 0)
+        return seen.joinToString("\n").take(maxChars)
     }
 }

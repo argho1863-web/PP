@@ -86,6 +86,11 @@ class ActionDispatcher(context: Context) {
         val scheme = u.scheme?.lowercase()
         if (scheme != "http" && scheme != "https") return "error: download_file only supports http/https URLs"
 
+        val host = u.host?.lowercase().orEmpty()
+        if (host.contains("youtube.com") || host.contains("youtu.be") || host.contains("googlevideo.com")) {
+            return "error: YouTube downloads are not supported (they break YouTube's terms). Use a direct media link from a royalty-free source such as Pexels, Pixabay, Wikimedia Commons or archive.org."
+        }
+
         val rawName = fileNameIn?.takeIf { it.isNotBlank() }
             ?: u.lastPathSegment?.takeIf { it.isNotBlank() }
             ?: "download_${System.currentTimeMillis()}"

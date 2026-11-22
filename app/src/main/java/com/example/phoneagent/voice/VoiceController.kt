@@ -13,6 +13,7 @@ import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.core.content.ContextCompat
+import com.example.phoneagent.data.AgentSettings
 import com.example.phoneagent.data.SecureSettingsStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.Locale
@@ -35,6 +36,7 @@ class VoiceController(
     @Volatile private var ttsReady = false
     @Volatile private var listenAfterSpeech: ((String) -> Unit)? = null
     private var tts: TextToSpeech? = null
+    private var appliedPersona = ""
 
     init {
         tts = TextToSpeech(ctx) { status ->
@@ -149,12 +151,43 @@ class VoiceController(
         main.post {
             runCatching { recognizer?.stopListening() }
             listening.value = false
+            applyVoice(settingsStore.settings.value)
             tts?.speak(
                 text.take(500),
                 if (flush) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD,
                 null,
                 "agent",
             )
+        }
+    }
+
+    /** Applies the persona's pitch, speech rate and (best effort) male / female voice. Main thread only. */
+    private fun applyVoice(s: AgentSettings) {
+        val engine = tts ?: return
+        val persona = s.personaEnum
+        engine.setPitch(s.voicePitch.coerceIn(0.5f, 2.0f))
+        engine.setSpeechRate(s.voiceRate.coerceIn(0.5f, 2.0f))
+        if (appliedPersona != persona.name) {
+            appliedPersona = persona.name
+            runCatching {
+                val lang = Locale.getDefault().language
+                val candidates = engine.voices.orEmpty().filter { it.locale.language == lang && !it.isNetworkConnectionRequired }
+                val match = candidates.firstOrNull { v ->
+                    val n = v.name.lowercase()
+                    if (persona.female) n.contains("female") else (n.contains("male") && !n.contains("female"))
+                }
+                if (match != null) engine.setVoice(match)
+            }
+        }
+    }
+
+    /** Plays a sample line with the given (possibly unsaved) settings so the persona can be auditioned. */
+    fun speakPreview(s: AgentSettings) {
+        if (!ttsReady) return
+        main.post {
+            applyVoice(s)
+            val p = s.personaEnum
+            tts?.speak("Hello ${p.callName}. I am ${p.label}. All systems are online.", TextToSpeech.QUEUE_FLUSH, null, "preview")
         }
     }
 
